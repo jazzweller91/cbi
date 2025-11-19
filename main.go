@@ -261,7 +261,6 @@ func main() {
 		go GetCommunityAreaUnemployment(db)
 		go GetBuildingPermits(db)
 		go GetTaxiTrips(db)
-
 		go GetCovidDetails(db)
 		go GetCCVIDetails(db)
 
@@ -317,7 +316,7 @@ func GetTaxiTrips(db *sql.DB) {
 
 	// Get your geocoder.ApiKey from here :
 	// https://developers.google.com/maps/documentation/geocoding/get-api-key?authuser=2
-
+	// (ideally use an env var, but leaving your line as-is)
 	geocoder.ApiKey = "AIzaSyAA0tWz_Cn-xbU86UO0lwqGmOnsszV1aRo"
 
 	drop_table := `drop table if exists taxi_trips`
@@ -370,18 +369,22 @@ func GetTaxiTrips(db *sql.DB) {
 	client := &http.Client{Transport: tr}
 
 	res, err := client.Get(url)
-
 	if err != nil {
 		panic(err)
 	}
-	// ADDED: close the first response body
 	defer res.Body.Close()
 
 	fmt.Println("Received data from SODA REST API for Taxi Trips")
 
-	body_1, _ := ioutil.ReadAll(res.Body)
+	body_1, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
 	var taxi_trips_list_1 TaxiTripsJsonRecords
-	json.Unmarshal(body_1, &taxi_trips_list_1)
+	if err := json.Unmarshal(body_1, &taxi_trips_list_1); err != nil {
+		panic(err)
+	}
+	fmt.Printf("Taxi Trips records received: %d\n", len(taxi_trips_list_1))
 
 	// Get the Taxi Trip list for rideshare companies like Uber/Lyft list
 	// Transportation-Network-Providers-Trips:
@@ -391,14 +394,19 @@ func GetTaxiTrips(db *sql.DB) {
 	if err != nil {
 		panic(err)
 	}
-	// ADDED: close the second response body
 	defer res_2.Body.Close()
 
 	fmt.Println("Received data from SODA REST API for Transportation-Network-Providers-Trips")
 
-	body_2, _ := ioutil.ReadAll(res_2.Body)
+	body_2, err := ioutil.ReadAll(res_2.Body)
+	if err != nil {
+		panic(err)
+	}
 	var taxi_trips_list_2 TaxiTripsJsonRecords
-	json.Unmarshal(body_2, &taxi_trips_list_2)
+	if err := json.Unmarshal(body_2, &taxi_trips_list_2); err != nil {
+		panic(err)
+	}
+	fmt.Printf("TNP Trips records received: %d\n", len(taxi_trips_list_2))
 
 	s := fmt.Sprintf("\n\n Transportation-Network-Providers-Trips number of SODA records received = %d\n\n", len(taxi_trips_list_2))
 	io.WriteString(os.Stdout, s)
@@ -407,25 +415,19 @@ func GetTaxiTrips(db *sql.DB) {
 
 	taxi_trips_list := append(taxi_trips_list_1, taxi_trips_list_2...)
 
-	// ADDED: optional counter for inserted rows
+	// optional counter for inserted rows
 	insertCount := 0
 
 	// Process the list
 
 	for i := 0; i < len(taxi_trips_list); i++ {
 
-		// We will execute defensive coding to check for messy/dirty/missing data values
-		// There are different methods to deal with messy/dirty/missing data.
-		// We will use the simplest method: drop records that have messy/dirty/missing data
-		// Any record that has messy/dirty/missing data we don't enter it in the data lake/table
+		// defensive coding for messy/dirty/missing data
 
 		trip_id := taxi_trips_list[i].Trip_id
 		if trip_id == "" {
 			continue
 		}
-
-		// if trip start/end timestamp doesn't have the length of 23 chars in the format "0000-00-00T00:00:00.000"
-		// skip this record
 
 		// get Trip_start_timestamp
 		trip_start_timestamp := taxi_trips_list[i].Trip_start_timestamp
@@ -440,32 +442,26 @@ func GetTaxiTrips(db *sql.DB) {
 		}
 
 		pickup_centroid_latitude := taxi_trips_list[i].Pickup_centroid_latitude
-
 		if pickup_centroid_latitude == "" {
 			continue
 		}
 
 		pickup_centroid_longitude := taxi_trips_list[i].Pickup_centroid_longitude
-
 		if pickup_centroid_longitude == "" {
 			continue
 		}
 
 		dropoff_centroid_latitude := taxi_trips_list[i].Dropoff_centroid_latitude
-
 		if dropoff_centroid_latitude == "" {
 			continue
 		}
 
 		dropoff_centroid_longitude := taxi_trips_list[i].Dropoff_centroid_longitude
-
 		if dropoff_centroid_longitude == "" {
 			continue
 		}
 
-		// Using pickup_centroid_latitude and pickup_centroid_longitude in geocoder.GeocodingReverse
-		// we could find the pickup zip-code
-
+		// parse coords
 		pickup_centroid_latitude_float, _ := strconv.ParseFloat(pickup_centroid_latitude, 64)
 		pickup_centroid_longitude_float, _ := strconv.ParseFloat(pickup_centroid_longitude, 64)
 		pickup_location := geocoder.Location{
@@ -473,20 +469,18 @@ func GetTaxiTrips(db *sql.DB) {
 			Longitude: pickup_centroid_longitude_float,
 		}
 
-		// Comment the following line while not unit-testing
 		fmt.Println(pickup_location)
 
-		pickup_address_list, _ := geocoder.GeocodingReverse(pickup_location)
-		// ADDED: guard against empty results
-		if len(pickup_address_list) == 0 {
-			continue
+		// default zip codes empty in case geocoding fails
+		pickup_zip_code := ""
+		dropoff_zip_code := ""
+
+		// Try reverse geocoding for pickup
+		if pickupAddressList, err := geocoder.GeocodingReverse(pickup_location); err == nil && len(pickupAddressList) > 0 {
+			pickup_zip_code = pickupAddressList[0].PostalCode
 		}
-		pickup_address := pickup_address_list[0]
-		pickup_zip_code := pickup_address.PostalCode
 
-		// Using dropoff_centroid_latitude and dropoff_centroid_longitude in geocoder.GeocodingReverse
-		// we could find the dropoff zip-code
-
+		// parse dropoff coords
 		dropoff_centroid_latitude_float, _ := strconv.ParseFloat(dropoff_centroid_latitude, 64)
 		dropoff_centroid_longitude_float, _ := strconv.ParseFloat(dropoff_centroid_longitude, 64)
 
@@ -495,13 +489,10 @@ func GetTaxiTrips(db *sql.DB) {
 			Longitude: dropoff_centroid_longitude_float,
 		}
 
-		dropoff_address_list, _ := geocoder.GeocodingReverse(dropoff_location)
-		// ADDED: guard here too
-		if len(dropoff_address_list) == 0 {
-			continue
+		// Try reverse geocoding for dropoff
+		if dropoffAddressList, err := geocoder.GeocodingReverse(dropoff_location); err == nil && len(dropoffAddressList) > 0 {
+			dropoff_zip_code = dropoffAddressList[0].PostalCode
 		}
-		dropoff_address := dropoff_address_list[0]
-		dropoff_zip_code := dropoff_address.PostalCode
 
 		sql := `INSERT INTO taxi_trips ("trip_id", "trip_start_timestamp", "trip_end_timestamp", "pickup_centroid_latitude", "pickup_centroid_longitude", "dropoff_centroid_latitude", "dropoff_centroid_longitude", "pickup_zip_code", 
 			"dropoff_zip_code") values($1, $2, $3, $4, $5, $6, $7, $8, $9)`
@@ -527,6 +518,7 @@ func GetTaxiTrips(db *sql.DB) {
 
 	fmt.Printf("Completed Inserting %d Rows into the TaxiTrips Table\n", insertCount)
 }
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
