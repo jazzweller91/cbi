@@ -23,4 +23,5 @@ steps:
 images:
 - gcr.io/tranquil-bazaar-478622-s3/go-microservice
 - gcr.io/tranquil-bazaar-478622-s3/pgadmin
-
+options:
+  logging: CLOUD_LOGGING_ONLY
