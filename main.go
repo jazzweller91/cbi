@@ -841,7 +841,9 @@ func GetBuildingPermits(db *sql.DB) {
 
 	// While doing unit-testing keep the limit value to 500
 	// later you could change it to 1000, 2000, 10,000, etc.
-	var url = "https://data.cityofchicago.org/resource/building-permits.json?$limit=500"
+
+	// FIXED: use dataset ID ydr8-5enu
+	var url = "https://data.cityofchicago.org/resource/ydr8-5enu.json?$limit=500"
 
 	tr := &http.Transport{
 		MaxIdleConns:       10,
@@ -855,7 +857,6 @@ func GetBuildingPermits(db *sql.DB) {
 	if err != nil {
 		panic(err)
 	}
-	// ADDED: close response body
 	defer res.Body.Close()
 
 	fmt.Println("Received data from SODA REST API for Building Permits")
@@ -865,7 +866,6 @@ func GetBuildingPermits(db *sql.DB) {
 		panic(err)
 	}
 	var building_data_list BuildingPermitsJsonRecords
-	// ADDED: check unmarshal error
 	if err := json.Unmarshal(body, &building_data_list); err != nil {
 		panic(err)
 	}
@@ -873,7 +873,6 @@ func GetBuildingPermits(db *sql.DB) {
 	s := fmt.Sprintf("\n\n Building Permits: number of SODA records received = %d\n\n", len(building_data_list))
 	io.WriteString(os.Stdout, s)
 
-	// ADDED: counter for inserted rows (optional but helpful)
 	insertCount := 0
 
 	for i := 0; i < len(building_data_list); i++ {
@@ -883,16 +882,13 @@ func GetBuildingPermits(db *sql.DB) {
 		// We will use the simplest method: drop records that have messy/dirty/missing data
 		// Any record that has messy/dirty/missing data we don't enter it in the data lake/table
 
+		// ---- Keep only *essential* fields required ----
 		permit_id := building_data_list[i].Id
 		if permit_id == "" {
 			continue
 		}
 
-		permit_code := building_data_list[i].Permit_Code
-		if permit_code == "" {
-			continue
-		}
-
+		permit_code := building_data_list[i].Permit_Code // may be blank in some records; keep anyway
 		permit_type := building_data_list[i].Permit_type
 		if permit_type == "" {
 			continue
@@ -907,148 +903,60 @@ func GetBuildingPermits(db *sql.DB) {
 		if application_start_date == "" {
 			continue
 		}
+
 		issue_date := building_data_list[i].Issue_date
 		if issue_date == "" {
 			continue
 		}
-		processing_time := building_data_list[i].Processing_time
-		if processing_time == "" {
-			continue
-		}
 
-		street_number := building_data_list[i].Street_number
-		if street_number == "" {
-			continue
-		}
-		street_direction := building_data_list[i].Street_direction
-		if street_direction == "" {
-			continue
-		}
+		processing_time := building_data_list[i].Processing_time // can be blank; don’t require
+
+		street_number := building_data_list[i].Street_number       // optional
+		street_direction := building_data_list[i].Street_direction // optional
+
 		street_name := building_data_list[i].Street_name
 		if street_name == "" {
 			continue
 		}
-		suffix := building_data_list[i].Suffix
-		if suffix == "" {
-			continue
-		}
-		work_description := building_data_list[i].Work_description
-		if work_description == "" {
-			continue
-		}
-		building_fee_paid := building_data_list[i].Building_fee_paid
-		if building_fee_paid == "" {
-			continue
-		}
-		zoning_fee_paid := building_data_list[i].Zoning_fee_paid
-		if zoning_fee_paid == "" {
-			continue
-		}
-		other_fee_paid := building_data_list[i].Other_fee_paid
-		if other_fee_paid == "" {
-			continue
-		}
-		subtotal_paid := building_data_list[i].Subtotal_paid
-		if subtotal_paid == "" {
-			continue
-		}
-		building_fee_unpaid := building_data_list[i].Building_fee_unpaid
-		if building_fee_unpaid == "" {
-			continue
-		}
-		zoning_fee_unpaid := building_data_list[i].Zoning_fee_unpaid
-		if zoning_fee_unpaid == "" {
-			continue
-		}
-		other_fee_unpaid := building_data_list[i].Other_fee_unpaid
-		if other_fee_unpaid == "" {
-			continue
-		}
-		subtotal_unpaid := building_data_list[i].Subtotal_unpaid
-		if subtotal_unpaid == "" {
-			continue
-		}
-		building_fee_waived := building_data_list[i].Building_fee_waived
-		if building_fee_waived == "" {
-			continue
-		}
-		zoning_fee_waived := building_data_list[i].Zoning_fee_waived
-		if zoning_fee_waived == "" {
-			continue
-		}
-		other_fee_waived := building_data_list[i].Other_fee_waived
-		if other_fee_waived == "" {
-			continue
-		}
 
+		suffix := building_data_list[i].Suffix                     // optional
+		work_description := building_data_list[i].Work_description // optional
+
+		// ---- Fees and financial fields: MANY are often blank; DO NOT require them ----
+		building_fee_paid := building_data_list[i].Building_fee_paid
+		zoning_fee_paid := building_data_list[i].Zoning_fee_paid
+		other_fee_paid := building_data_list[i].Other_fee_paid
+		subtotal_paid := building_data_list[i].Subtotal_paid
+		building_fee_unpaid := building_data_list[i].Building_fee_unpaid
+		zoning_fee_unpaid := building_data_list[i].Zoning_fee_unpaid
+		other_fee_unpaid := building_data_list[i].Other_fee_unpaid
+		subtotal_unpaid := building_data_list[i].Subtotal_unpaid
+		building_fee_waived := building_data_list[i].Building_fee_waived
+		zoning_fee_waived := building_data_list[i].Zoning_fee_waived
+		other_fee_waived := building_data_list[i].Other_fee_waived
 		subtotal_waived := building_data_list[i].Subtotal_waived
-		if subtotal_waived == "" {
-			continue
-		}
 		total_fee := building_data_list[i].Total_fee
-		if total_fee == "" {
-			continue
-		}
 
 		contact_1_type := building_data_list[i].Contact_1_type
-		if contact_1_type == "" {
-			continue
-		}
-
 		contact_1_name := building_data_list[i].Contact_1_name
-		if contact_1_name == "" {
-			continue
-		}
-
 		contact_1_city := building_data_list[i].Contact_1_city
-		if contact_1_city == "" {
-			continue
-		}
 		contact_1_state := building_data_list[i].Contact_1_state
-		if contact_1_state == "" {
-			continue
-		}
-
 		contact_1_zipcode := building_data_list[i].Contact_1_zipcode
-		if contact_1_zipcode == "" {
-			continue
-		}
 
 		reported_cost := building_data_list[i].Reported_cost
-		if reported_cost == "" {
-			continue
-		}
-
 		pin1 := building_data_list[i].Pin1
-		if pin1 == "" {
-			continue
-		}
-
 		pin2 := building_data_list[i].Pin2
-
 		community_area := building_data_list[i].Community_area
-
 		census_tract := building_data_list[i].Census_tract
-		if census_tract == "" {
-			continue
-		}
-
 		ward := building_data_list[i].Ward
-		if ward == "" {
-			continue
-		}
-
 		xcoordinate := building_data_list[i].Xcoordinate
-
 		ycoordinate := building_data_list[i].Ycoordinate
 
 		latitude := building_data_list[i].Latitude
-		if latitude == "" {
-			continue
-		}
-
 		longitude := building_data_list[i].Longitude
-		if longitude == "" {
+
+		// Only truly critical for mapping: require lat/long
+		if latitude == "" || longitude == "" {
 			continue
 		}
 
