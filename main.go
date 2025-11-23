@@ -352,7 +352,7 @@ func GetTaxiTrips(db *sql.DB) {
 
 	// Get the the Taxi Trips for Taxi medallions list
 
-	var url = "https://data.cityofchicago.org/resource/wrvz-psew.json?$limit=10000"
+	var url = "https://data.cityofchicago.org/resource/wrvz-psew.json?$limit=1000"
 
 	tr := &http.Transport{
 		MaxIdleConns:          10,
@@ -385,7 +385,7 @@ func GetTaxiTrips(db *sql.DB) {
 
 	// Get the Taxi Trip list for rideshare companies like Uber/Lyft list
 	// Transportation-Network-Providers-Trips:
-	var url_2 = "https://data.cityofchicago.org/resource/m6dm-c72p.json?$limit=10000"
+	var url_2 = "https://data.cityofchicago.org/resource/m6dm-c72p.json?$limit=1000"
 
 	res_2, err := http.Get(url_2)
 	if err != nil {
@@ -843,7 +843,7 @@ func GetBuildingPermits(db *sql.DB) {
 	// later you could change it to 1000, 2000, 10,000, etc.
 
 	// FIXED: use dataset ID ydr8-5enu
-	var url = "https://data.cityofchicago.org/resource/ydr8-5enu.json?$limit=10000"
+	var url = "https://data.cityofchicago.org/resource/ydr8-5enu.json?$limit=1000"
 
 	tr := &http.Transport{
 		MaxIdleConns:       10,
@@ -1123,7 +1123,7 @@ func GetCovidDetails(db *sql.DB) {
 
 	// COVID-19 Cases, Tests, and Deaths by ZIP Code - Historical
 	// Limit kept small for prototyping; increase as needed
-	var url = "https://data.cityofchicago.org/resource/yhhz-zm2v.json?$limit=10000"
+	var url = "https://data.cityofchicago.org/resource/yhhz-zm2v.json?$limit=1000"
 
 	tr := &http.Transport{
 		MaxIdleConns:       10,
